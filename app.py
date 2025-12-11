@@ -4,6 +4,7 @@ import pandas as pd
 import time
 from datetime import datetime
 import extra_streamlit_components as stx # 引入餅乾管理套件
+import json # 【新增】引入 JSON 套件來處理帳目資料
 
 # --- 1. 頁面基本設定 ---
 st.set_page_config(
@@ -138,8 +139,6 @@ with tab1:
 with tab2:
     st.header("🐦 水雉大仙賜籤")
     st.write("呼喚台南市鳥「凌波仙子」，誠心祈求水雉大仙咬出籤王。")
-    
-    # 【修改】這裡的店家範例已更換為：富盛號碗粿、炸雞洋行、莉莉水果店
     user_input = st.text_area("輸入候選店家 (每行一間)", height=150, 
                              placeholder="例如：\n富盛號碗粿\n炸雞洋行\n莉莉水果店")
     
@@ -171,30 +170,62 @@ with tab2:
         else:
             st.warning("還沒輸入店家喔！")
 
-# --- 功能 3: 自動結帳 ---
+# --- 功能 3: 自動結帳 (Cookie 記憶版) ---
 with tab3:
     st.header("💸 自動結帳")
+    st.caption("這份帳單會自動存在手機裡，關掉網頁也不怕！")
+
+    # 1. 初始化並讀取 Cookie 裡的舊帳本
     if 'expenses' not in st.session_state:
         st.session_state.expenses = []
+        
+        # 嘗試從 Cookie 讀取資料
+        saved_expenses = cookie_manager.get(cookie="trip_expenses")
+        if saved_expenses:
+            try:
+                # 把文字轉回 Python 的列表格式
+                st.session_state.expenses = json.loads(saved_expenses)
+            except:
+                st.session_state.expenses = []
     
+    # 2. 輸入區
     with st.container():
         c1, c2, c3 = st.columns([2, 1, 1])
         with c1: item_name = st.text_input("項目", key="input_item")
         with c2: payer_name = st.text_input("付款人", key="input_payer")
         with c3: amount = st.number_input("金額", min_value=0, step=10, key="input_amount")
         
+        # 3. 加入按鈕 (同時寫入 Cookie)
         if st.button("➕ 加入清單", use_container_width=True):
             if item_name and payer_name and amount > 0:
-                st.session_state.expenses.append({"項目": item_name,"付款人": payer_name,"金額": amount})
-                st.success(f"已加入: {item_name}")
+                # 加入新資料
+                st.session_state.expenses.append({
+                    "項目": item_name,
+                    "付款人": payer_name,
+                    "金額": amount
+                })
+                
+                # 【關鍵】立刻存入 Cookie
+                # json.dumps 會把帳本轉成一長串文字
+                cookie_manager.set("trip_expenses", json.dumps(st.session_state.expenses), 
+                                 expires_at=datetime.now().replace(year=datetime.now().year + 1))
+                
+                st.success(f"已加入並儲存: {item_name}")
+                time.sleep(0.5) # 等待寫入
+                st.rerun()      # 重新整理顯示表格
+            else:
+                st.error("請輸入完整資料喔")
 
     st.divider()
+    
+    # 4. 顯示表格與結算
     if st.session_state.expenses:
         df = pd.DataFrame(st.session_state.expenses)
         st.dataframe(df, use_container_width=True)
         total_cost = df["金額"].sum()
         payers = df.groupby("付款人")["金額"].sum().to_dict()
         all_people = list(payers.keys())
+        
         if len(all_people) > 0:
             avg_cost = total_cost / len(all_people)
             st.markdown(f"""
@@ -212,8 +243,11 @@ with tab3:
                 if balance > 0: st.success(f"**{person}** 應收回 **${balance:.1f}**")
                 elif balance < 0: st.error(f"**{person}** 應再付 **${abs(balance):.1f}**")
                 else: st.info(f"**{person}** 結清")
-        if st.button("🗑️ 清空帳目"):
+        
+        # 5. 清空按鈕 (同時刪除 Cookie)
+        if st.button("🗑️ 清空所有帳目"):
             st.session_state.expenses = []
+            cookie_manager.delete("trip_expenses")
             st.rerun()
 
 # --- 功能 4: 停車紀錄 (Cookie 記憶版) ---
