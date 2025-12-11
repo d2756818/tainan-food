@@ -169,7 +169,7 @@ with tab2:
         else:
             st.warning("還沒輸入店家喔！")
 
-# --- 功能 3: 自動結帳 (結算按鈕版) ---
+# --- 功能 3: 自動結帳 (防呆確認版) ---
 with tab3:
     st.header("💸 自動結帳")
     st.caption("輸入完所有項目後，按最下方的「開始結算」即可。")
@@ -177,28 +177,16 @@ with tab3:
     if 'expenses' not in st.session_state:
         st.session_state.expenses = []
     
-    # 這裡是用來控制「是否顯示結算結果」的開關
     if 'show_settlement' not in st.session_state:
         st.session_state.show_settlement = False
 
-    # 1. 救援按鈕
-    col_load, col_dummy = st.columns([1, 2])
-    with col_load:
-        if st.button("📂 讀取舊帳本 (救援資料)", help="如果資料不見了，點這個試試看！"):
-            cookie_data_retry = cookie_manager.get(cookie="trip_expenses")
-            if cookie_data_retry:
-                try:
-                    st.session_state.expenses = json.loads(cookie_data_retry)
-                    st.session_state.show_settlement = False # 讀取後先不顯示結果，避免混亂
-                    st.success("✅ 成功救回資料！")
-                    time.sleep(0.5)
-                    st.rerun()
-                except:
-                    st.error("讀取失敗")
-            else:
-                st.warning("找不到舊資料，請再按一次。")
-
-    st.markdown("---")
+    # 1. 自動讀取 Cookie (原本的救援按鈕已移除)
+    cookie_data = cookie_manager.get(cookie="trip_expenses")
+    if cookie_data and not st.session_state.expenses:
+        try:
+            st.session_state.expenses = json.loads(cookie_data)
+        except:
+            pass
 
     # 2. 輸入區
     with st.container():
@@ -214,7 +202,7 @@ with tab3:
                     "付款人": payer_name,
                     "金額": amount
                 })
-                # 加入新資料後，先把結算結果收起來，確保資料一致
+                # 只要有變動，先隱藏結算結果，避免誤會
                 st.session_state.show_settlement = False
                 
                 cookie_manager.set("trip_expenses", json.dumps(st.session_state.expenses), 
@@ -227,7 +215,7 @@ with tab3:
 
     st.divider()
     
-    # 3. 顯示目前清單 (永遠顯示)
+    # 3. 顯示目前清單
     if st.session_state.expenses:
         st.subheader("📝 目前的消費紀錄")
         df = pd.DataFrame(st.session_state.expenses)
@@ -236,14 +224,11 @@ with tab3:
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 4. 【關鍵新增】結算按鈕
-        # 如果還沒按過結算，顯示按鈕；如果按過了，就顯示結果
+        # 4. 結算功能
         if not st.session_state.show_settlement:
             if st.button("💰 旅程結束，開始結算", type="primary", use_container_width=True):
                 st.session_state.show_settlement = True
                 st.rerun()
-        
-        # 5. 顯示結算結果 (只有按下按鈕後才會跑出來)
         else:
             st.markdown("---")
             st.markdown("### 📊 最終結算結果")
@@ -272,19 +257,39 @@ with tab3:
                         elif balance < 0: st.error(f"**{person}** 應再付 **${abs(balance):.1f}**")
                         else: st.info(f"**{person}** 結清")
             
-            # 重新計算/修改按鈕
             if st.button("🔄 修改資料 / 重新計算"):
                 st.session_state.show_settlement = False
                 st.rerun()
             
-            # 清空按鈕
-            if st.button("🗑️ 清空所有帳目"):
-                st.session_state.expenses = []
-                st.session_state.show_settlement = False
-                cookie_manager.delete("trip_expenses")
-                st.rerun()
+            # 5. 防呆刪除機制 (移到右側)
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_space, col_clear = st.columns([1, 1]) # 切分版面，左邊留白，右邊放按鈕
+            
+            with col_clear:
+                # 只有當沒有在確認狀態時，才顯示清空按鈕
+                if 'confirm_clear_expense' not in st.session_state:
+                    st.session_state.confirm_clear_expense = False
+                
+                if not st.session_state.confirm_clear_expense:
+                    if st.button("🗑️ 清空費用紀錄"):
+                        st.session_state.confirm_clear_expense = True
+                        st.rerun()
+                else:
+                    st.warning("⚠️ 確定要移除紀錄嗎？")
+                    col_y, col_n = st.columns(2)
+                    with col_y:
+                        if st.button("✅ 是"):
+                            st.session_state.expenses = []
+                            st.session_state.show_settlement = False
+                            st.session_state.confirm_clear_expense = False
+                            cookie_manager.delete("trip_expenses")
+                            st.rerun()
+                    with col_n:
+                        if st.button("❌ 否"):
+                            st.session_state.confirm_clear_expense = False
+                            st.rerun()
 
-# --- 功能 4: 停車紀錄 ---
+# --- 功能 4: 停車紀錄 (防呆確認版) ---
 with tab4:
     st.header("🛵 我的機車停哪？")
     st.caption("現在這個紀錄會存在您的手機瀏覽器裡，關掉網頁也不會消失囉！")
@@ -330,9 +335,28 @@ with tab4:
                 <span style="color: #333;">{display_loc}</span>
             </div>
             """, unsafe_allow_html=True)
+        
+        # 停車紀錄的防呆刪除
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        if 'confirm_clear_parking' not in st.session_state:
+            st.session_state.confirm_clear_parking = False
             
-        if st.button("🗑️ 清除所有停車紀錄"):
-            cookie_manager.delete("parking_history")
-            st.rerun()
+        if not st.session_state.confirm_clear_parking:
+            if st.button("🗑️ 清除所有停車紀錄"):
+                st.session_state.confirm_clear_parking = True
+                st.rerun()
+        else:
+            st.warning("⚠️ 確定要移除紀錄嗎？")
+            col_py, col_pn = st.columns(2)
+            with col_py:
+                if st.button("✅ 確定"):
+                    cookie_manager.delete("parking_history")
+                    st.session_state.confirm_clear_parking = False
+                    st.rerun()
+            with col_pn:
+                if st.button("❌ 取消"):
+                    st.session_state.confirm_clear_parking = False
+                    st.rerun()
     else:
         st.info("目前還沒有停車紀錄")
