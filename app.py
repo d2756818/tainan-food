@@ -100,7 +100,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 【修改 1】標題已更改
 st.title("🏯 台南旅遊小幫手")
 st.markdown("---")
 
@@ -114,6 +113,7 @@ with tab1:
     st.header("🕑 餓了嗎？現在幾點？")
     try:
         df_food = pd.read_csv("food_list.csv")
+        # 這裡會自動讀取 CSV 裡的新名稱 (早上、中午...)
         all_categories = df_food["時段"].unique()
         time_select = st.selectbox("請選擇時段：", all_categories)
         current_list = df_food[df_food["時段"] == time_select]["店名"].tolist()
@@ -139,8 +139,10 @@ with tab1:
 with tab2:
     st.header("🐦 水雉大仙賜籤")
     st.write("呼喚台南市鳥「凌波仙子」，誠心祈求水雉大仙咬出籤王。")
+    
+    # 【修改】這裡的預設文字已經更換了
     user_input = st.text_area("輸入候選店家 (每行一間)", height=150, 
-                             placeholder="例如：\n阿堂鹹粥\n丹丹漢堡\n小豪洲沙茶爐")
+                             placeholder="例如：\n文章牛肉湯\nNINAO 蜷尾家\n阿裕牛肉鍋")
     
     if st.button("🎋 請大仙咬籤！", type="primary"):
         if user_input.strip():
@@ -243,8 +245,6 @@ with tab4:
             history_list = history_list[:5]
             save_str = "|".join([f"{x['time']}::{x['loc']}" for x in history_list])
             cookie_manager.set("parking_history", save_str, expires_at=datetime.now().replace(year=datetime.now().year + 1))
-            
-            # 【修改 2】成功訊息已更改
             st.success("已成功儲存！")
             time.sleep(1) 
             st.rerun()    
